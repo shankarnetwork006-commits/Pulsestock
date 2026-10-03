@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#0b1220"><title>PulseStock</title>
+<style>
+:root{font-family:Inter,system-ui,Arial,sans-serif;color:#e8eef9;background:#0b1220}*{box-sizing:border-box}body{margin:0}.wrap{max-width:1050px;margin:auto;padding:22px}.top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.brand{font-size:24px;font-weight:800;letter-spacing:-.7px}.brand span{color:#42d392}.sub,.muted{color:#91a0b9;font-size:13px}.pill{border:1px solid #26334a;border-radius:30px;padding:8px 12px;color:#9eabc0;font-size:12px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:14px;margin:22px 0}.card{background:#111c2e;border:1px solid #24314a;border-radius:17px;padding:17px}.stat{font-size:28px;font-weight:750;margin-top:5px}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:18px 0}.tab,button{border:1px solid #2b3b56;border-radius:11px;padding:10px 14px;background:#17243a;color:#eaf1ff;cursor:pointer;font-weight:650}.tab.active{background:#254435;border-color:#2c9968;color:#74e8af}.stock{display:flex;align-items:center;gap:12px}.symbol{width:43px;height:43px;border-radius:12px;background:#20304a;display:grid;place-items:center;font-weight:800;color:#a9c4ff}.stockinfo{flex:1}.name{font-weight:750}.count{font-size:12px;color:#9eabc0;margin-top:4px}.percent{font-weight:750}.green{color:#45d391}.red{color:#ff6d7c}.bar{height:8px;border-radius:20px;background:#26334a;overflow:hidden;display:flex;margin:13px 0}.bar i:nth-child(1){background:#35c889}.bar i:nth-child(2){background:#f05b70}.bar i:nth-child(3){background:#7c8ba5}.votes{display:flex;gap:7px;flex-wrap:wrap}.votes button{flex:1;min-width:75px}.votes button.buy{border-color:#267b56}.votes button.sell{border-color:#9c3d4b}.votes button.hold{border-color:#596984}.votes button:disabled{opacity:.5;cursor:default}.section{font-size:18px;font-weight:750;margin:24px 0 10px}.list{display:grid;gap:10px}.foot{margin:24px 0;color:#8392aa;font-size:12px;line-height:1.6}.status{font-size:12px;color:#9eabc0}.notice{background:#172b26;border:1px solid #286448;color:#b6f1d2;padding:12px;border-radius:12px;font-size:13px;margin-top:14px}input{padding:11px;border-radius:10px;border:1px solid #2b3b56;background:#0d1728;color:white;width:100%;max-width:300px}
+</style></head><body><main class="wrap">
+<header class="top"><div><div class="brand">Pulse<span>Stock</span></div><div class="sub">Community sentiment · India watchlist</div></div><div class="pill" id="authState">Connecting…</div></header>
+<div class="notice" id="setupNotice" hidden>Firebase config is not set yet. Follow README.md to connect your Firebase project before publishing.</div>
+<div class="card" id="authPanel"><div class="section">Email login</div><p class="status">Create an account or sign in to vote.</p><input id="email" type="email" placeholder="Email address" autocomplete="email"><br><br><input id="password" type="password" placeholder="Password" autocomplete="current-password"><br><br><button id="signup">Create account</button> <button id="login">Login</button> <button id="logout" hidden>Logout</button><div class="status" id="authMessage" style="margin-top:10px"></div></div>
+<div class="grid">
+<div class="card"><div class="muted">Views today</div><div class="stat" id="views">—</div><div class="status">Stock-page visits in this app</div></div>
+<div class="card"><div class="muted">Votes today</div><div class="stat" id="votes">—</div><div class="status">Current community votes</div></div>
+<div class="card"><div class="muted">Stocks tracked</div><div class="stat">6</div><div class="status">Watchlist in this MVP</div></div>
+</div>
+<div class="section">Market sentiment today</div><div class="tabs" id="tabs"></div>
+<div class="card" id="detail"><div class="muted">Loading stock sentiment…</div></div>
+<div class="section">Top shares today</div><div class="tabs"><button id="topBuy" class="tab active">Top BUY</button><button id="topSell" class="tab">Top SELL</button><button id="mostViewed" class="tab">Most Viewed</button></div>
+<div class="list" id="ranking"></div>
+<div class="foot">Community sentiment is based only on PulseStock users’ votes. It is not actual broker-wide trading activity or investment advice. Demo watchlist uses stock symbols only; live market prices are not included in this MVP.</div>
+</main>
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {getAuth,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,onAuthStateChanged} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {getFirestore,doc,onSnapshot} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {getFunctions,httpsCallable} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-functions.js";
+const firebaseConfig={apiKey:"AIzaSyB7qbbybgz95NsMGQVILOhfbOAf-HJ0QEg",authDomain:"pulsestock-6010a.firebaseapp.com",projectId:"pulsestock-6010a",storageBucket:"pulsestock-6010a.firebasestorage.app",messagingSenderId:"421736589549",appId:"1:421736589549:web:035a6d68e5641ece6ac4e4",measurementId:"G-Y9562DWYSZ"};
+const stocks=[["HDFCBANK","HDFC Bank"],["RELIANCE","Reliance Industries"],["TCS","TCS"],["INFY","Infosys"],["ICICIBANK","ICICI Bank"],["TATAMOTORS","Tata Motors"]];
+let selected=stocks[0][0],mode="buy",uid=null,db,recordVote,recordView,unsubs=[],stats={};
+const $=id=>document.getElementById(id),today=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Kolkata",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+const fmt=n=>Number(n||0).toLocaleString("en-IN");
+function tickerName(t){return stocks.find(x=>x[0]===t)?.[1]||t}
+function zero(){return {buy:0,sell:0,hold:0,views:0}}
+function render(){
+ const s=stats[selected]||zero(),total=s.buy+s.sell+s.hold;
+ $("views").textContent=fmt(stocks.reduce((a,x)=>a+(stats[x[0]]?.views||0),0));
+ $("votes").textContent=fmt(stocks.reduce((a,x)=>{let z=stats[x[0]]||zero();return a+z.buy+z.sell+z.hold},0));
+ const p=k=>total?Math.round(s[k]/total*100):0;
+ $("detail").innerHTML=`<div class="stock"><div class="symbol">${selected.slice(0,2)}</div><div class="stockinfo"><div class="name">${tickerName(selected)}</div><div class="count">${fmt(s.views)} views today · ${fmt(total)} votes today</div></div><div class="pill">Today · Live</div></div><div class="bar"><i style="width:${p("buy")}%"></i><i style="width:${p("sell")}%"></i><i style="width:${p("hold")}%"></i></div><div class="stock" style="justify-content:space-between"><span class="green">BUY ${p("buy")}% · ${fmt(s.buy)}</span><span class="red">SELL ${p("sell")}% · ${fmt(s.sell)}</span><span class="muted">HOLD ${p("hold")}% · ${fmt(s.hold)}</span></div><div class="section">Your vote</div><div class="votes"><button class="buy" id="vbuy">▲ BUY</button><button class="sell" id="vsell">▼ SELL</button><button class="hold" id="vhold">● HOLD</button></div><div class="status" id="voteStatus" style="margin-top:10px">One current vote per user per stock per day. You can change your vote.</div>`;
+ $("vbuy").onclick=()=>vote("buy");$("vsell").onclick=()=>vote("sell");$("vhold").onclick=()=>vote("hold");
+ const sorted=[...stocks].sort((a,b)=>mode==="viewed"?(stats[b[0]]?.views||0)-(stats[a[0]]?.views||0):mode==="buy"?((stats[b[0]]?.buy||0)-(stats[a[0]]?.buy||0)):((stats[b[0]]?.sell||0)-(stats[a[0]]?.sell||0)));
+ $("ranking").innerHTML=sorted.map(([t,n],i)=>{let z=stats[t]||zero(),sum=z.buy+z.sell+z.hold;let val=mode==="viewed"?z.views:mode==="buy"?z.buy:z.sell;let label=mode==="viewed"?"views":mode.toUpperCase()+" votes";return `<div class="card stock"><div class="symbol">${i+1}</div><div class="stockinfo"><div class="name">${n}</div><div class="count">${fmt(sum)} votes · ${fmt(z.views)} views</div></div><div style="text-align:right"><div class="percent ${mode==="sell"?"red":mode==="buy"?"green":""}">${fmt(val)}</div><div class="count">${label}</div></div></div>`}).join("");
+}
+async function vote(v){if(!recordVote||!uid)return;$("voteStatus").textContent="Saving vote…";try{await recordVote({ticker:selected,vote:v});$("voteStatus").textContent="Vote saved. Live totals updated."; }catch(e){$("voteStatus").textContent="Could not save: "+e.message}}
+function setupTabs(){$("tabs").innerHTML=stocks.map(([t,n])=>`<button class="tab ${selected===t?"active":""}" data-t="${t}">${t}</button>`).join("");document.querySelectorAll("#tabs button").forEach(b=>b.onclick=()=>{selected=b.dataset.t;render();setupTabs();if(uid)recordView?.({ticker:selected}).catch(()=>{})});}
+$("topBuy").onclick=()=>setMode("buy");$("topSell").onclick=()=>setMode("sell");$("mostViewed").onclick=()=>setMode("viewed");
+function setMode(m){mode=m;["topBuy","topSell","mostViewed"].forEach((id,i)=>$(id).classList.toggle("active",["buy","sell","viewed"][i]===m));render()}
+const configured=firebaseConfig.apiKey!=="PASTE_API_KEY"&&firebaseConfig.projectId!=="PASTE_PROJECT_ID";
+if(!configured){$("setupNotice").hidden=false;$("authState").textContent="Setup required";$("views").textContent="0";$("votes").textContent="0";stats=Object.fromEntries(stocks.map(x=>[x[0],zero()]));setupTabs();render();}
+else{
+ const app=initializeApp(firebaseConfig),auth=getAuth(app);db=getFirestore(app);const fn=getFunctions(app);recordVote=httpsCallable(fn,"recordVote");recordView=httpsCallable(fn,"recordView");
+ const showAuthError=e=>{$("authMessage").textContent=e?.message||"Please try again."};
+ $("signup").onclick=async()=>{try{await createUserWithEmailAndPassword(auth,$("email").value.trim(),$("password").value)}catch(e){showAuthError(e)}};
+ $("login").onclick=async()=>{try{await signInWithEmailAndPassword(auth,$("email").value.trim(),$("password").value)}catch(e){showAuthError(e)}};
+ $("logout").onclick=()=>signOut(auth).catch(showAuthError);
+ onAuthStateChanged(auth,async user=>{unsubs.forEach(f=>f());unsubs=[];uid=user?.uid||null;$("authState").textContent=user?"Logged in":"Login required";$("logout").hidden=!user;$("signup").hidden=!!user;$("login").hidden=!!user;$("authMessage").textContent=user?"Signed in successfully.":"Please login or create an account.";setupTabs();if(user){for(const [t] of stocks){unsubs.push(onSnapshot(doc(db,"dailyStats",today+"_"+t),snap=>{stats[t]=snap.exists()?snap.data():zero();render()}));}await recordView({ticker:selected}).catch(()=>{});}else{stats=Object.fromEntries(stocks.map(x=>[x[0],zero()]));render();}});
+}
+</script></body></html>
